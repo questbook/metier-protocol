@@ -5,6 +5,7 @@ import requests
 import sqlite3
 import time
 from mempool import Mempool
+from validator import Validator
 
 
 dbConnection = sqlite3.connect("whisper.db")
