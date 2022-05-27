@@ -4,6 +4,8 @@ from urllib.parse import parse_qs
 import requests
 import sqlite3
 import time
+from mempool import Mempool
+
 
 dbConnection = sqlite3.connect("whisper.db")
 cursor = dbConnection.cursor()
@@ -11,6 +13,10 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS listeners(ip TEXT, retry INT)''')
 
 hostName = "localhost"
 hostPort = 9000
+
+mempool = Mempool()
+
+MAX_FORWARD_RETRY = 5
 
 class WhisperServer(BaseHTTPRequestHandler):
     ALLOWED_OPERATIONS = [
@@ -42,7 +48,8 @@ class WhisperServer(BaseHTTPRequestHandler):
         return (405, "NOT ABLE TO ACCOMODATE")
         
     
-    def operate(self, body):
+    def operate(self, data):
+        body = parse_qs(data, keep_blank_values=1)      
         operation = body[b"operation"][0]
         if operation == b"LISTEN":
             return self.handleListen(body)
@@ -51,14 +58,14 @@ class WhisperServer(BaseHTTPRequestHandler):
             pass
             # process block
         elif operation in self.ALLOWED_OPERATIONS:
-            pass
-            # add to mempool
-    def forward(self, data):
+            return mempool.add(data)
+
+    def forward(self, hash, data):
         body = parse_qs(data, keep_blank_values=1)  
         if not self.isValid(data) or body[b"operation"] == "LISTEN":
             return
-        hash = self.generateRequestHash(body)
         listeners = cursor.execute("SELECT * FROM listeners")
+        # if hash not already forwarded
         print(listeners)
         for listener in listeners:
             print(listener)
@@ -83,9 +90,9 @@ class WhisperServer(BaseHTTPRequestHandler):
         data = self.rfile.read(length)
         body = parse_qs(data, keep_blank_values=1)  
         print(body)
-        self.operate(body)
+        hash = self.operate(data)
         if not body[b"operation"][0] == b"LISTEN":
-            self.forward(data)
+            self.forward(hash, data)
 
 myServer = HTTPServer((hostName, hostPort), WhisperServer)
 print(time.asctime(), "Server Starts - %s:%s" % (hostName, hostPort))

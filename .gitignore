@@ -1,1 +1,2 @@
-src/whisper.db
+src/*.db
+src/__pycache__
