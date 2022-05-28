@@ -2,6 +2,8 @@
     <head>
         <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"
         type="application/javascript"></script>
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
     </head>
     <body>
         <h1>Create a github_extension STORE request</h1>
@@ -19,10 +21,11 @@
                 const signer = provider.getSigner();
                 const user = await signer.getAddress();
                 
-                const signable  = `operation=STORE&source=github_extensions&extension=${document.getElementById("ext").value}&repos=${document.getElementById("repo").value}&nonce=${Date.now()}&address=${user}`;
+                const signable  = `operation=STORE&source=github_extensions&extension=${document.getElementById("ext").value}&repos=${document.getElementById("repo").value}&nonce=${Date.now()}&address=${user}&txFee=10`;
                 const signature = await signer.signMessage(signable);
                 console.log(signable, signature)
-                const tx  = `operation=STORE&source=github_extensions&extension=${document.getElementById("ext").value}&repos=${document.getElementById("repo").value}&nonce=${Date.now()}&address=${user}&signature=${signature}`
+                const tx  = `${signable}&signature=${signature}`
+                await axios.post("http://localhost:9000/", tx)
             }
         </script>
     </footer>

@@ -6,29 +6,28 @@ import sqlite3
 import time
 from mempool import Mempool
 from validator import Validator
-
+from blockchain import Blockchain
 
 dbConnection = sqlite3.connect("whisper.db")
 cursor = dbConnection.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS listeners(id INT PRIMARY KEY AUTOINCREMENT, ip TEXT, retry INT)''')
-cursor.execute('''CREATE TABLE IF NOT EXISTS forward(hash TEXT, receivedAt INT)''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS listeners (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT, retry INT)''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS forwards (hash TEXT, receivedAt INT)''')
 
 hostName = "localhost"
 hostPort = 9000
 
-mempool = Mempool()
 
 MAX_FORWARD_RETRY = 5
 
 class WhisperServer(BaseHTTPRequestHandler):
     ALLOWED_OPERATIONS = [
-        "BLOCK", # Block publication
-        "STORE", 
-        "QUERY", 
-        "CHALLENGE", 
-        "RESPOND", # respond to challenge
-        "SUBMISSION", # Submit an accepted transaction on chain
-        "LISTEN" # Add to whisper broadcast
+        b"BLOCK", # Block publication
+        b"STORE", 
+        b"QUERY", 
+        b"CHALLENGE", 
+        b"RESPOND", # respond to challenge
+        b"SUBMISSION", # Submit an accepted transaction on chain
+        b"LISTEN" # Add to whisper broadcast
         ]
     def isValid(self, data) :
         body = parse_qs(data, keep_blank_values=1)
@@ -98,13 +97,17 @@ class WhisperServer(BaseHTTPRequestHandler):
         body = parse_qs(data, keep_blank_values=1)  
         print(body)
         hash = self.operate(data)
+        print(hash)
         if not body[b"operation"][0] == b"LISTEN":
             self.forward(hash, data)
 
+mempool = Mempool()
 myServer = HTTPServer((hostName, hostPort), WhisperServer)
+myBlockchain = Blockchain(mempool)
 print(time.asctime(), "Server Starts - %s:%s" % (hostName, hostPort))
 
 try:
+    myBlockchain.initHeartbeat()
     myServer.serve_forever()
 except KeyboardInterrupt:
     pass
