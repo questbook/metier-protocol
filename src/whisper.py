@@ -10,7 +10,8 @@ from validator import Validator
 
 dbConnection = sqlite3.connect("whisper.db")
 cursor = dbConnection.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS listeners(ip TEXT, retry INT)''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS listeners(id INT PRIMARY KEY AUTOINCREMENT, ip TEXT, retry INT)''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS forward(hash TEXT, receivedAt INT)''')
 
 hostName = "localhost"
 hostPort = 9000
@@ -26,8 +27,9 @@ class WhisperServer(BaseHTTPRequestHandler):
         "QUERY", 
         "CHALLENGE", 
         "RESPOND", # respond to challenge
+        "SUBMISSION", # Submit an accepted transaction on chain
         "LISTEN" # Add to whisper broadcast
-         ]
+        ]
     def isValid(self, data) :
         body = parse_qs(data, keep_blank_values=1)
         operation = body[b"operation"]
@@ -42,7 +44,7 @@ class WhisperServer(BaseHTTPRequestHandler):
         ip = body[b"ip"][0].decode("utf-8")
         listeners = cursor.execute("SELECT * FROM listeners WHERE ip = '%s'"% ip).fetchall()
         if not listeners and len(listeners) < 200:
-            cursor.execute("INSERT INTO listeners VALUES ('%s', 0)" % ip)
+            cursor.execute("INSERT INTO listeners VALUES (0,'%s', 0)" % ip)
             return (201, "ADDED")
         if listeners:
             return (202, "ALREADY EXISTS")
@@ -65,15 +67,19 @@ class WhisperServer(BaseHTTPRequestHandler):
         body = parse_qs(data, keep_blank_values=1)  
         if not self.isValid(data) or body[b"operation"] == "LISTEN":
             return
-        listeners = cursor.execute("SELECT * FROM listeners")
-        # if hash not already forwarded
-        print(listeners)
+        listeners = cursor.execute("SELECT * FROM listeners").fetchall()
+        forwards = cursor.execute("SELECT * FROM forwards WHERE hash='%s'"%hash).fetchall()
+        if forwards:
+            return
         for listener in listeners:
-            print(listener)
             try:
-                requests.post("http://"+listener[0]+":"+str(hostPort), data=body)
+                requests.post("http://"+listener[1]+":"+str(hostPort), data=body)
             except Exception as e:
                 print(e)
+                # if host not reachable more than 5 times kick listener 
+                cursor.execute("UPDATE listeners SET retry=retry+1 WHERE id=%d", listener[0])
+                if listener[2] > 4:
+                    cursor.execute("DELETE FROM listeners WHERE id=%d", listeners[0])    
 
 
 
