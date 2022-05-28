@@ -1,0 +1,29 @@
+<html>
+    <head>
+        <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"
+        type="application/javascript"></script>
+    </head>
+    <body>
+        <h1>Create a github_extension STORE request</h1>
+        <input id="repo" placeholder="username/repository"/>
+        <br />
+        <input id="ext" placeholder=".js" />
+        <br />
+        <button onclick="store()">Create STORE request</button>
+    </body>
+    <footer>
+        <script>
+            async function store() {
+                const provider = new ethers.providers.Web3Provider(window.ethereum)
+                await provider.send("eth_requestAccounts", []);
+                const signer = provider.getSigner();
+                const user = await signer.getAddress();
+                
+                const signable  = `operation=STORE&source=github_extensions&extension=${document.getElementById("ext").value}&repos=${document.getElementById("repo").value}&nonce=${Date.now()}&address=${user}`;
+                const signature = await signer.signMessage(signable);
+                console.log(signable, signature)
+                const tx  = `operation=STORE&source=github_extensions&extension=${document.getElementById("ext").value}&repos=${document.getElementById("repo").value}&nonce=${Date.now()}&address=${user}&signature=${signature}`
+            }
+        </script>
+    </footer>
+</html>
