@@ -1,12 +1,12 @@
 from cgitb import text
-import sqlite3
-from time import time
+import psycopg2
 from urllib.parse import parse_qs
 from web3 import Web3
 import web3
 from utils import getAddressFromSignature
 import utxos
 import eth_account
+from time import time
 
 class Mempool :
     _dbConnection = None
@@ -14,14 +14,17 @@ class Mempool :
     _utxos = None
 
     def __init__(self):
-        self._dbConnection = sqlite3.connect("mempool.db")
+        self._dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
         self._cursor = self._dbConnection.cursor()
-        self._cursor.execute("CREATE TABLE IF NOT EXISTS mempool (opHash TEXT, opRaw TEXT, opTimestamp INT, txFee INT, exectuted INT)")
+        self._cursor.execute("CREATE TABLE IF NOT EXISTS mempool (opHash TEXT, opRaw TEXT, opTimestamp INT, txFee INT, executed INT)")
         self._utxos = utxos.Utxo()
     
     def isValid(self, data):
-        # todo: verify validity
         body = parse_qs(data, keep_blank_values=1)
+
+        # todo: verify validity
+        """
+        # todo : block
         signableText, signature = data.decode("utf-8").split("&signature=")
         signerClaimed = body[b"address"][0].decode("utf-8")
         signable = eth_account.messages.encode_defunct(text=signableText)
@@ -29,6 +32,8 @@ class Mempool :
         if not signerClaimed==signerSigned:
             print("Invalid signature")
             return False
+        """
+        
         if not self._utxos.balance(getAddressFromSignature(data), int(body[b"txFee"][0])):
             return False
 
@@ -55,14 +60,19 @@ class Mempool :
         raw = data.decode("utf-8")
         body = parse_qs(data, keep_blank_values=1)
         hash = self.hash(data)
-        if self._cursor.execute("SELECT * FROM mempool WHERE opHash='%s'"%hash).fetchall():
+        prev = self._cursor.execute("SELECT * FROM mempool WHERE opHash='%s'"%hash)
+
+        if not prev:
             return None
         self._cursor.execute("INSERT INTO mempool VALUES('%s', '%s', %d, %d, 0)"%(hash, raw, int(time()), int(body[b"txFee"][0])))
         print("Added %s to mempool"%hash)
         return hash
     
     def get(self, count):
-        return self._cursor.execute("SELECT * FROM mempool WHERE executed=0 ORDER BY txFee DESC LIMIT %d"%count).fetchall()
+        query = self._cursor.execute("SELECT * FROM mempool WHERE executed=0 ORDER BY txFee DESC LIMIT %d"%count)
+        if not query:
+            return []
+        return query.fetchall()
 
     def mark(self, hashes):
         return

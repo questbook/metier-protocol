@@ -1,16 +1,19 @@
+import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from cgi import parse_header, parse_multipart
+import threading
 from urllib.parse import parse_qs
 import requests
-import sqlite3
 import time
 from mempool import Mempool
 from validator import Validator
 from blockchain import Blockchain
+import pickle
+import psycopg2
 
-dbConnection = sqlite3.connect("whisper.db")
+dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
 cursor = dbConnection.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS listeners (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT, retry INT)''')
+cursor.execute('''CREATE TABLE IF NOT EXISTS listeners (id SERIAL PRIMARY KEY, ip TEXT, retry INT)''')
 cursor.execute('''CREATE TABLE IF NOT EXISTS forwards (hash TEXT, receivedAt INT)''')
 
 hostName = "localhost"
@@ -19,7 +22,12 @@ hostPort = 9000
 
 MAX_FORWARD_RETRY = 5
 
-class WhisperServer(BaseHTTPRequestHandler):
+
+mempool = Mempool()
+blockchain = Blockchain(mempool)
+
+
+class NodeServer(BaseHTTPRequestHandler):
     ALLOWED_OPERATIONS = [
         b"BLOCK", # Block publication
         b"STORE", 
@@ -41,7 +49,10 @@ class WhisperServer(BaseHTTPRequestHandler):
 
     def handleListen(self, body) :
         ip = body[b"ip"][0].decode("utf-8")
-        listeners = cursor.execute("SELECT * FROM listeners WHERE ip = '%s'"% ip).fetchall()
+        query = cursor.execute("SELECT * FROM listeners WHERE ip = '%s'"% ip)
+        listeners = []
+        if query:
+           listeners= query.fetchall() 
         if not listeners and len(listeners) < 200:
             cursor.execute("INSERT INTO listeners VALUES (0,'%s', 0)" % ip)
             return (201, "ADDED")
@@ -56,8 +67,12 @@ class WhisperServer(BaseHTTPRequestHandler):
         if operation == b"LISTEN":
             return self.handleListen(body)
             # add to broadcast list
+        if operation == b"HEARTBEAT":
+            blockchain.onHeartbeat()
+            return str(int(body[b"heartbeat"][0]))
         elif operation == "BLOCK":
-            pass
+            blockData = pickle.loads(base64.b64decode(body[b"data"][0].decode("utf-8")))
+            return "block/"+blockData["hash"]
             # process block
         elif operation in self.ALLOWED_OPERATIONS:
             return mempool.add(data)
@@ -66,9 +81,13 @@ class WhisperServer(BaseHTTPRequestHandler):
         body = parse_qs(data, keep_blank_values=1)  
         if not self.isValid(data) or body[b"operation"] == "LISTEN":
             return
-        listeners = cursor.execute("SELECT * FROM listeners").fetchall()
-        forwards = cursor.execute("SELECT * FROM forwards WHERE hash='%s'"%hash).fetchall()
-        if forwards:
+        listenersQuery = cursor.execute("SELECT * FROM listeners")
+        listeners = []
+        if listenersQuery:
+            listeners = listenersQuery.fetchall()
+        
+        forwardsQuery = cursor.execute("SELECT * FROM forwards WHERE hash='%s'"%hash)
+        if forwardsQuery:
             return
         for listener in listeners:
             try:
@@ -84,6 +103,14 @@ class WhisperServer(BaseHTTPRequestHandler):
 
 
 
+    def processRequest(self, data):
+        body = parse_qs(data, keep_blank_values=1)  
+        print(body)
+        hash = self.operate(data)
+        print(hash)
+        if not body[b"operation"][0] == b"LISTEN":
+            self.forward(hash, data)
+        print("completed processing")
 
 
     def do_GET(self):
@@ -92,22 +119,21 @@ class WhisperServer(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(bytes("OK", "utf-8"))
     def do_POST(self):
+        print("doing post")
         length = int(self.headers['content-length'])
         data = self.rfile.read(length)
-        body = parse_qs(data, keep_blank_values=1)  
-        print(body)
-        hash = self.operate(data)
-        print(hash)
-        if not body[b"operation"][0] == b"LISTEN":
-            self.forward(hash, data)
+        threading.Thread(target=self.processRequest, args=(data,)).start()
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.send_header('Location', '/restaurant')
+        self.end_headers()
 
-mempool = Mempool()
-myServer = HTTPServer((hostName, hostPort), WhisperServer)
-myBlockchain = Blockchain(mempool)
+        return
+
+myServer = HTTPServer((hostName, hostPort), NodeServer)
 print(time.asctime(), "Server Starts - %s:%s" % (hostName, hostPort))
 
 try:
-    myBlockchain.initHeartbeat()
     myServer.serve_forever()
 except KeyboardInterrupt:
     pass
