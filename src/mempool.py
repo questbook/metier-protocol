@@ -23,8 +23,6 @@ class Mempool :
         body = parse_qs(data, keep_blank_values=1)
 
         # todo: verify validity
-        """
-        # todo : block
         signableText, signature = data.decode("utf-8").split("&signature=")
         signerClaimed = body[b"address"][0].decode("utf-8")
         signable = eth_account.messages.encode_defunct(text=signableText)
@@ -32,8 +30,6 @@ class Mempool :
         if not signerClaimed==signerSigned:
             print("Invalid signature")
             return False
-        """
-        
         if not self._utxos.balance(getAddressFromSignature(data), int(body[b"txFee"][0])):
             return False
 

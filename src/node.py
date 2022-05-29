@@ -70,8 +70,11 @@ class NodeServer(BaseHTTPRequestHandler):
         if operation == b"HEARTBEAT":
             blockchain.onHeartbeat()
             return str(int(body[b"heartbeat"][0]))
-        elif operation == "BLOCK":
-            blockData = pickle.loads(base64.b64decode(body[b"data"][0].decode("utf-8")))
+        elif operation == b"BLOCK":
+            print(body[b"data"][0].decode("utf-8"))
+            blockData = pickle.loads(base64.b64decode(bytes.fromhex(body[b"data"][0].decode("utf-8"))))
+            print("Received block, lets process", blockData["hash"])
+            blockchain.onBlockReceived(blockData)
             return "block/"+blockData["hash"]
             # process block
         elif operation in self.ALLOWED_OPERATIONS:
