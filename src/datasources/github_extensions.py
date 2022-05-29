@@ -13,7 +13,7 @@ class GithubExtensions:
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_extensions (id SERIAL PRIMARY KEY, credential TEXT, github_username TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_username_address_mappings (github_username TEXT, address TEXT)")
-
+        self._dbConnection.commit()
     def fetch(self, data):
         # todo : replace with real fetch
         body = parse_qs(data, keep_blank_values=1)
@@ -29,8 +29,8 @@ class GithubExtensions:
     
     def verify(self, txn):
         hash, data, timestamp, fees, output = txn
-        seenResponseHash = Web3.sha3(text=base64.b64encode(pickle.loads(self.fetch(data))).hex()).hex()
-        claimedResponseHash =  Web3.sha3(text=base64.b64encode(pickle.loads(output)).hex()).hex()
+        seenResponseHash = Web3.sha3(text=base64.b64encode(pickle.loads(bytes.fromhex(self.fetch(data))))).hex()
+        claimedResponseHash =  Web3.sha3(text=base64.b64encode(pickle.loads(bytes.fromhex(output)))).hex()
         print("CHECKING STORE: ", seenResponseHash, claimedResponseHash)
         return seenResponseHash == claimedResponseHash
     
@@ -41,7 +41,7 @@ class GithubExtensions:
         address = str(body["address"][0]) # todo extract address from signature
         storable = pickle.loads(base64.b64decode(bytes.fromhex(output)))
         for member in storable.members:
-            self._cursor.execute("INSERT INTO github_extensions VALUES (0, '%s','%s')"("%s:%s"%(address,hash), member[0]))
+            self._cursor.execute("INSERT INTO github_extensions VALUES (0, '%s','%s')"%("%s:%s"%(address,hash), member[0]))
             self._dbConnection.commit()
         return 
     
@@ -54,8 +54,8 @@ class GithubExtensions:
         body = parse_qs(data, keep_blank_values=1)
         address = body["address"] # todo : extract from signature
         username = self.getUsernameFromAuthToken(body["auth_token"])
-        prev = self._cursor.execute("SELECT * FROM github_username_address_mappings WHERE github_username='%s'"%username)
-        if prev :
+        self._cursor.execute("SELECT * FROM github_username_address_mappings WHERE github_username='%s'"%username)
+        if self._cursor.rowcount == 0 :
             self._cursor.execute("UPDATE github_username_address_mappings SET address='%s' WHERE github_username='%s'"%(address, username))
             self._dbConnection.commit()
         else:
@@ -67,7 +67,7 @@ class GithubExtensions:
         body = parse_qs(data, keep_blank_values=1)
         address = body["address"][0]
         credential = body["credential"][0]
-        responseQuery = self._cursor.execute("SELECT * FROM github_extensions INNER JOIN github_username_address_mappings ON github_extensions.github_username=github_username_address_mappings.github_username WHERE github_username_address_mappings.address='%s'"%address)
-        if responseQuery:
-            return responseQuery.fetchall()[0]
-        return None
+        self._cursor.execute("SELECT * FROM github_extensions INNER JOIN github_username_address_mappings ON github_extensions.github_username=github_username_address_mappings.github_username WHERE github_username_address_mappings.address='%s'"%address)
+        if self._cursor.rowcount == 0:
+            return []
+        return self._cursor.fetchall()

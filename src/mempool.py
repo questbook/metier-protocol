@@ -1,4 +1,5 @@
 from cgitb import text
+import sys
 import psycopg2
 from urllib.parse import parse_qs
 from web3 import Web3
@@ -17,6 +18,7 @@ class Mempool :
         self._dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS mempool (opHash TEXT, opRaw TEXT, opTimestamp INT, txFee INT, executed INT)")
+        self._dbConnection.commit()
         self._utxos = utxos.Utxo()
     
     def isValid(self, data):
@@ -51,24 +53,29 @@ class Mempool :
         return "todo"+str(int(time()))
         
     def add(self, data):
+        print("Adding to mempool", data)
         if not self.isValid(data):
+            print("invalid transaction, not adding to mempool")
             return None
+        print("valid transaction")
         raw = data.decode("utf-8")
         body = parse_qs(data, keep_blank_values=1)
         hash = self.hash(data)
-        prev = self._cursor.execute("SELECT * FROM mempool WHERE opHash='%s'"%hash)
-
-        if not prev:
+        self._cursor.execute("SELECT * FROM mempool WHERE opHash='%s'"%hash)
+        print("mempool same hash entry", prev)
+        if self._cursor.rowcount > 0:
             return None
+        print("Pushing to mempool")
         self._cursor.execute("INSERT INTO mempool VALUES('%s', '%s', %d, %d, 0)"%(hash, raw, int(time()), int(body[b"txFee"][0])))
         self._dbConnection.commit()
+        print("Pushed to mempool with hash", hash)
         return hash
     
     def get(self, count):
-        query = self._cursor.execute("SELECT * FROM mempool WHERE executed=0 ORDER BY txFee DESC LIMIT %d"%count)
-        if not query:
+        self._cursor.execute("SELECT * FROM mempool WHERE executed=0 ORDER BY txFee DESC LIMIT %d"%count)
+        if self._cursor.rowcount == 0 : 
             return []
-        return query.fetchall()
+        return self._cursor.fetchall()
 
     def onTransactionConfirmed(self, hash):
         self._cursor.execute("UPDATE mempool SET executed=1 WHERE opHash='%s'"%hash)

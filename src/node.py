@@ -1,6 +1,7 @@
 import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from cgi import parse_header, parse_multipart
+import sys
 import threading
 from urllib.parse import parse_qs
 import requests
@@ -15,7 +16,7 @@ dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", pass
 cursor = dbConnection.cursor()
 cursor.execute('''CREATE TABLE IF NOT EXISTS listeners (id SERIAL PRIMARY KEY, ip TEXT, retry INT)''')
 cursor.execute('''CREATE TABLE IF NOT EXISTS forwards (hash TEXT, receivedAt INT)''')
-
+dbConnection.commit()
 hostName = "localhost"
 hostPort = 9000
 
@@ -55,7 +56,7 @@ class NodeServer(BaseHTTPRequestHandler):
         ip = body[b"ip"][0].decode("utf-8")
         query = cursor.execute("SELECT * FROM listeners WHERE ip = '%s'"% ip)
         listeners = []
-        if query:
+        if cursor.rowcount > 0:
            listeners= query.fetchall() 
         if not listeners and len(listeners) < 200:
             cursor.execute("INSERT INTO listeners VALUES (0,'%s', 0)" % ip)
@@ -85,23 +86,26 @@ class NodeServer(BaseHTTPRequestHandler):
             return "confirm/"+confirmation["signature"]
             # process block
         elif operation in self.ALLOWED_OPERATIONS:
-            return mempool.add(data)
+            hash = mempool.add(data)
+            print("added to mempool", hash)
+            return hash
 
     def forward(self, hash, data):
         body = parse_qs(data, keep_blank_values=1)  
         if not self.isValid(data) or body[b"operation"] == "LISTEN":
             return
-        listenersQuery = cursor.execute("SELECT * FROM listeners")
+        cursor.execute("SELECT * FROM listeners")
         listeners = []
-        if listenersQuery:
-            listeners = listenersQuery.fetchall()
+        if cursor.rowcount > 0:
+            listeners = cursor.fetchall()
         
-        forwardsQuery = cursor.execute("SELECT * FROM forwards WHERE hash='%s'"%hash)
-        if forwardsQuery:
+        cursor.execute("SELECT * FROM forwards WHERE hash='%s'"%hash)
+        if cursor.rowcount > 0:
             return
         for listener in listeners:
             try:
-                requests.post("http://"+listener[1]+":"+str(hostPort), data=body)
+                print("Forwarding to ", listener)
+                requests.post("http://"+listener[1]+":"+str(hostPort), data=body, timeout=3)
             except Exception as e:
                 print(e)
                 # if host not reachable more than 5 times kick listener 
@@ -119,10 +123,11 @@ class NodeServer(BaseHTTPRequestHandler):
     def processRequest(self, data):
         body = parse_qs(data, keep_blank_values=1)  
         print("Processing ...", body[b"operation"])
+        sys.stdout.flush()
         hash = self.operate(data)
         if not body[b"operation"][0] == b"LISTEN":
             self.forward(hash, data)
-        print("====| Completed Processing |====")
+        print("====| Completed Processing %s : %s |===="%(body[b"operation"], hash))
 
 
     def do_GET(self):
@@ -135,10 +140,11 @@ class NodeServer(BaseHTTPRequestHandler):
         data = self.rfile.read(length)
         threading.Thread(target=self.processRequest, args=(data,)).start()
         self.send_response(200)
+        response = bytes("OK", "utf-8")
+        self.send_header("Content-Length", str(len(response)))
         self.send_header('Content-type', 'text/html')
-        self.send_header('Location', '/restaurant')
         self.end_headers()
-
+        self.wfile.write(response)
         return
 
 myServer = HTTPServer((hostName, hostPort), NodeServer)

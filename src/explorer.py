@@ -31,3 +31,4 @@ class Explorer:
             html += ""
             html += "</html>"
             return html
+        return "<html><h1>Error</h1><p>Unknown path %s</p></html>"%path

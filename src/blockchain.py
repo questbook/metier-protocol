@@ -3,8 +3,8 @@ from cgitb import text
 from concurrent.futures import thread
 from random import random
 import eth_account
-from numpy import block
 import psycopg2
+import sys
 
 import time
 import threading
@@ -36,12 +36,17 @@ class Blockchain():
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockdata (blocknumber INT, blockhash TEXT, data TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockheaders (blocknumber INT, blockhash TEXT, confirmations INT, signatures TEXT, threshold INT, timestamp INT)")
+        self._cursor.execute("SELECT * FROM blockheaders LIMIT 1")
+        if self._cursor.rowcount == 0:
+            self._cursor.execute("INSERT INTO blockheaders VALUES (0, 'genesis', 1,'', 1,0)")
+            self._cursor.execute('''INSERT INTO blockdata VALUES(0,'genesis', '')''')
+        self._dbConnection.commit()
         self._mempool = mempool
         self._dataSourceHandlers["github_extensions"] = github_extensions.GithubExtensions()
         return
 
     def onHeartbeat(self):
-        print("Heartbeat received at current blank", self.getLatestBlock())
+        print("Heartbeat received at current block", self.getLatestBlock())
         if self.isSelfBlock():
             self.proposeBlock()
         else:
@@ -49,13 +54,16 @@ class Blockchain():
     
     def onBlockReceived(self, block):
         hash = block["hash"]
-        prev = self._cursor.execute("SELECT * FROM blockheaders WHERE blockhash='%s'"%hash)
-        if prev:
+        print("Received block with hash", hash)
+        self._cursor.execute("SELECT * FROM blockheaders WHERE blockhash=%s",[hash])
+        if self._cursor.rowcount > 0:
+            print("Block has already been seen before")
             return None
         data = base64.b64encode(pickle.dumps(block)).hex()
         self._cursor.execute("INSERT INTO blockdata VALUES (%d, '%s','%s')"%(block["number"], hash, data))
         self._cursor.execute("INSERT INTO blockheaders VALUES (%d, '%s', 0, '', %d, %d)"%(block["number"], hash, self.getCurrentThreshold(), time.time()))
         self._dbConnection.commit()
+        print("Block added to seen list")
         blockTransactionsVerification = self.verifyBlockTransactions(pickle.loads(base64.b64decode(bytes.fromhex(block["blockTxnsData"]))))
         onchainTransactionsVerification = True  # todo
         utxosTransactionsVerification = True # todo
@@ -74,10 +82,11 @@ class Blockchain():
         print(confirmation)
         hash = confirmation["hash"]
         if confirmation["accept"] == 1:
-            blockheadersQuery = self._cursor.execute("SELECT * FROM blockheaders WHERE blockhash='%s'"%hash)
-            if not blockheadersQuery:
+            self._cursor.execute("SELECT * FROM blockheaders WHERE blockhash='%s'"%hash)
+            if self._cursor.rowcount == 0:
+                print("No block with hash %s"%hash)
                 return None
-            blockheaders = blockheadersQuery.fetchall()[0]
+            blockheaders = self._cursor.fetchone()
             number, hash, confirmations, signatures, threshold, timestamp = blockheaders
             print("Block headers", hash, confirmations, threshold)
             if confirmation["signature"] in signatures.split(","):
@@ -89,8 +98,10 @@ class Blockchain():
             confirmations += self.getNodeStake(signer)
             self._cursor.execute("UPDATE blockheaders SET confirmations=%d, signatures='%s' WHERE blockhash='%s'"%(confirmations, signatures, hash))
             self._dbConnection.commit()
-            if confirmations > threshold:
-                blockdata = self._cursor.execute("SELECT * FROM blockdata WHERE blockhash='%s'"%hash).fetchall()[0]
+            print("Confirmations", confirmations, threshold)
+            if confirmations >= threshold:
+                self._cursor.execute("SELECT * FROM blockdata WHERE blockhash='%s'"%hash)
+                blockdata = self._cursor.fetchone()
                 blockNumber, blockHash, rawBlock = blockdata
                 block = pickle.loads(base64.b64decode(bytes.fromhex(rawBlock)))
                 blockTransactions = pickle.loads(base64.b64decode(bytes.fromhex(block["blockTxnsData"])))
@@ -179,18 +190,22 @@ class Blockchain():
     
     def getLatestBlock(self):
 
-        blockQuery = self._cursor.execute("SELECT MAX(blocknumber) FROM blockheaders WHERE confirmations>threshold")
-        if not blockQuery:
+        self._cursor.execute("SELECT MAX(blocknumber) FROM blockheaders WHERE confirmations>=threshold")
+        if self._cursor.rowcount == 0:
             return 0
-        return blockQuery.fetchall()[0][0]
+        block = self._cursor.fetchone()
+        return block[0]
     
-    def getBlockTransactions(self, blocknumber):
-        confirmedBlockQuery = self._cursor.execute("SELECT * FROM blockheaders WHERE confirmations>thershold AND blocknumber=%d"%blocknumber)
-        if confirmedBlockQuery:
-            (number, hash, confirmations, signatures, threshold) = confirmedBlockQuery.fetchall()[0]
-            blockData = self._cursor.execute("SELECT * FROM blockdata WHERE hash='%s'"%hash)
-            if blockData:
-                (number, hash, data) = blockData.fetchall()[0]
+    def getBlock(self, blocknumber):
+        self._cursor.execute("SELECT * FROM blockheaders WHERE confirmations>=threshold AND blocknumber=%d"%int(blocknumber))
+        if self._cursor.rowcount > 0:
+            confirmedBlock = self._cursor.fetchone()
+            print("Get block", confirmedBlock)
+            number, hash, confirmations, signatures, threshold, timestamp = confirmedBlock
+            self._cursor.execute("SELECT * FROM blockdata WHERE blockhash='%s'"%hash)
+            if self._cursor.rowcount > 0:
+                blockData = self._cursor.fetchone()
+                number, hash, data = blockData
                 block = pickle.loads(base64.b64decode(bytes.fromhex(data)))
                 blockTransactions = pickle.loads(base64.b64decode(bytes.fromhex(block["blockTxnsData"])))
                 onchainTransactions = []
