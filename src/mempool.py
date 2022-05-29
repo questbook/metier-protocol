@@ -70,5 +70,6 @@ class Mempool :
             return []
         return query.fetchall()
 
-    def mark(self, hashes):
+    def onTransactionConfirmed(self, hash):
+        self._cursor.execute("UPDATE mempool SET executed=1 WHERE opHash='%s'"%hash)
         return

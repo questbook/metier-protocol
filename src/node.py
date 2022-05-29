@@ -5,6 +5,7 @@ import threading
 from urllib.parse import parse_qs
 import requests
 import time
+from explorer import Explorer
 from mempool import Mempool
 from validator import Validator
 from blockchain import Blockchain
@@ -25,6 +26,7 @@ MAX_FORWARD_RETRY = 5
 
 mempool = Mempool()
 blockchain = Blockchain(mempool)
+explorer = Explorer(blockchain, mempool)
 
 
 class NodeServer(BaseHTTPRequestHandler):
@@ -33,10 +35,12 @@ class NodeServer(BaseHTTPRequestHandler):
         b"STORE", 
         b"QUERY", 
         b"CHALLENGE", 
+        b"RESPONSE", # submitting a query response onchain
         b"RESPOND", # respond to challenge
         b"SUBMISSION", # Submit an accepted transaction on chain
-        b"LISTEN" # Add to whisper broadcast
-        ]
+        b"LISTEN", # Add to whisper broadcast
+        b"LINKUSER", # link user address to datasource identifier (e.g. githb username)
+    ]
     def isValid(self, data) :
         body = parse_qs(data, keep_blank_values=1)
         operation = body[b"operation"]
@@ -120,7 +124,7 @@ class NodeServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write(bytes("OK", "utf-8"))
+        self.wfile.write(bytes(explorer.query(self.path), "utf-8"))
     def do_POST(self):
         print("doing post")
         length = int(self.headers['content-length'])

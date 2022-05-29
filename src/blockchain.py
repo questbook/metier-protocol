@@ -88,6 +88,9 @@ class Blockchain():
                     body = parse_qs(data, keep_blank_values=1)
                     if body["operation"] == "STORE":
                         self._dataSourceHandlers[body["source"]].store(txn)
+                    if body["operation"] == "LINKUSER":
+                        self._dataSourceHandlers[body["source"]].link(txn)
+                self._mempool.onTransactionConfirmed(hash)
 
     def verifyBlockTransactions(self, transactions):
         for txn in transactions:
@@ -123,11 +126,12 @@ class Blockchain():
         for tx in txns:
             hash, data, timestamp, fees, executed = tx
             body = parse_qs(data, keep_blank_values=1)
+            output=''
             if body["operation"][0] == "STORE":
-                if body["source"][0] == "github_extensions":
-                    githubExtensions = github_extensions.GithubExtensions()
-                    output = githubExtensions.fetch(data)
-                    blockTxns.append((hash, data, timestamp, fees, output))
+                output = self._dataSourceHandlers[body["source"][0]].fetch(data)
+            if body["operation"][0] == "QUERY":
+                output = self._dataSourceHandlers[body["source"][0]].query(data)
+            blockTxns.append((hash, data, timestamp, fees, output))
         print("blocktxns", blockTxns)
         blockTxnsHash = web3.Web3.sha3(pickle.dumps(blockTxns)).hex() # todo: replace with merkel root
         print("blockTxnsHash", blockTxnsHash)
@@ -164,3 +168,28 @@ class Blockchain():
     def getNodeStake(self, address):
         # todo read from contract
         return 1
+    
+    def getLatestBlock(self):
+        return self._cursor.execute("SELECT MAX(blocknumber) FROM blockheaders WHERE confirmations>threshold").fetchall()
+    
+    def getBlockTransactions(self, blocknumber):
+        confirmedBlockQuery = self._cursor.execute("SELECT * FROM blockheaders WHERE confirmations>thershold AND blocknumber=%d"%blocknumber)
+        if confirmedBlockQuery:
+            (number, hash, confirmations, signatures, threshold) = confirmedBlockQuery.fetchall()[0]
+            blockData = self._cursor.execute("SELECT * FROM blockdata WHERE hash='%s'"%hash)
+            if blockData:
+                (number, hash, data) = blockData.fetchall()[0]
+                block = pickle.loads(base64.b64decode(bytes.fromhex(data)))
+                blockTransactions = pickle.loads(base64.b64decode(bytes.fromhex(block["blockTxnsData"])))
+                onchainTransactions = []
+                utxoTransactions = []
+                return {
+                    "hash": hash, 
+                    "confirmations": confirmations,
+                    "threshold": threshold,
+                    "signatures": signatures,
+                    "blockTransactions": blockTransactions,
+                    "onchainTransactions": onchainTransactions,
+                    "utxoTransactions": utxoTransactions
+                }
+

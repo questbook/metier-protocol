@@ -5,8 +5,8 @@ import psycopg2
 from web3 import Web3
 
 class GithubExtensions:
-    self._dbConnection = None
-    self._cursor = None
+    _dbConnection = None
+    _cursor = None
 
     def __init__(self):
         self._dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
@@ -43,6 +43,28 @@ class GithubExtensions:
         for member in storable.members:
             self._cursor.execute("INSERT INTO github_extensions VALUES (0, '%s','%s')"("%s:%s"%(address,hash), member[0]))
         return 
+    
+    def getUsernameFromAuthToken(self, authToken):
+        #todo request githubapi
+        return authToken 
+
+    def link(self, data):
+        # todo : extract from access token
+        body = parse_qs(data, keep_blank_values=1)
+        address = body["address"] # todo : extract from signature
+        username = self.getUsernameFromAuthToken(body["auth_token"])
+        prev = self._cursor.execute("SELECT * FROM github_username_address_mappings WHERE github_username='%s'"%username)
+        if prev :
+            self._cursor.execute("UPDATE github_username_address_mappings SET address='%s' WHERE github_username='%s'"%(address, username))
+        else:
+            self._cursor.execute("INSERT INTO github_username_address_mappings VALUES ('%s','%s')"%(username, address))
+        return
 
     def query(self, data):
-        return {}
+        body = parse_qs(data, keep_blank_values=1)
+        address = body["address"][0]
+        credential = body["credential"][0]
+        responseQuery = self._cursor.execute("SELECT * FROM github_extensions INNER JOIN github_username_address_mappings ON github_extensions.github_username=github_username_address_mappings.github_username WHERE github_username_address_mappings.address='%s'"%address)
+        if responseQuery:
+            return responseQuery.fetchall()[0]
+        return None

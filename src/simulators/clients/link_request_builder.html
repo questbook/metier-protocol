@@ -1,0 +1,29 @@
+<html>
+    <head>
+        <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"
+        type="application/javascript"></script>
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    </head>
+    <body>
+        <h1>Link github username with your address</h1>
+        <p>TODO : use access token here </p>
+        <input id="username" placeholder="username"/>
+        <button onclick="store()">Create LINKUSER request</button>
+    </body>
+    <footer>
+        <script>
+            async function store() {
+                const provider = new ethers.providers.Web3Provider(window.ethereum)
+                await provider.send("eth_requestAccounts", []);
+                const signer = provider.getSigner();
+                const user = await signer.getAddress();
+                const signable  = `operation=LINKUSER&source=github_extensions&auth_token=${document.getElementById("username").value}nonce=${Date.now()}&address=${user}&txFee=10`;
+                const signature = await signer.signMessage(signable);
+                console.log(signable, signature)
+                const tx  = `${signable}&signature=${signature}`
+                await axios.post("http://localhost:9000/", tx)
+            }
+        </script>
+    </footer>
+</html>
