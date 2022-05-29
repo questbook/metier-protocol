@@ -164,7 +164,7 @@ class Blockchain():
 
         blocknumber = self.getLatestBlock() + 1
 
-        blockHash = web3.Web3.sha3(text="%s%s%s%s%d"%(blockTxnsHash, onchainTxnsHash, utxoTxnsHash, proposer, blocknumber)).hex()                    
+        blockHash = web3.Web3.sha3(text="%s%s%s%s%d%d"%(blockTxnsHash, onchainTxnsHash, utxoTxnsHash, proposer, blocknumber, int(time.time()))).hex()                    
 
         block = {
             "hash": blockHash,

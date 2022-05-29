@@ -29,8 +29,11 @@ class GithubExtensions:
     
     def verify(self, txn):
         hash, data, timestamp, fees, output = txn
-        seenResponseHash = Web3.sha3(text=base64.b64encode(pickle.loads(bytes.fromhex(self.fetch(data))))).hex()
-        claimedResponseHash =  Web3.sha3(text=base64.b64encode(pickle.loads(bytes.fromhex(output)))).hex()
+        print("Verifying(seen)", self.fetch(data))
+        print("Verifying(claimed)", output)
+
+        seenResponseHash = Web3.sha3(text=self.fetch(data)).hex()
+        claimedResponseHash =  Web3.sha3(text=output).hex()
         print("CHECKING STORE: ", seenResponseHash, claimedResponseHash)
         return seenResponseHash == claimedResponseHash
     

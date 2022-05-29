@@ -62,7 +62,6 @@ class Mempool :
         body = parse_qs(data, keep_blank_values=1)
         hash = self.hash(data)
         self._cursor.execute("SELECT * FROM mempool WHERE opHash='%s'"%hash)
-        print("mempool same hash entry", prev)
         if self._cursor.rowcount > 0:
             return None
         print("Pushing to mempool")
