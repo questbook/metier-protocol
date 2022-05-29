@@ -61,7 +61,7 @@ class Mempool :
         if not prev:
             return None
         self._cursor.execute("INSERT INTO mempool VALUES('%s', '%s', %d, %d, 0)"%(hash, raw, int(time()), int(body[b"txFee"][0])))
-        print("Added %s to mempool"%hash)
+        self._dbConnection.commit()
         return hash
     
     def get(self, count):
@@ -72,4 +72,5 @@ class Mempool :
 
     def onTransactionConfirmed(self, hash):
         self._cursor.execute("UPDATE mempool SET executed=1 WHERE opHash='%s'"%hash)
+        self._dbConnection.commit()
         return

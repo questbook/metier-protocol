@@ -7,7 +7,6 @@ import requests
 import time
 from explorer import Explorer
 from mempool import Mempool
-from validator import Validator
 from blockchain import Blockchain
 import pickle
 import psycopg2
@@ -40,6 +39,7 @@ class NodeServer(BaseHTTPRequestHandler):
         b"SUBMISSION", # Submit an accepted transaction on chain
         b"LISTEN", # Add to whisper broadcast
         b"LINKUSER", # link user address to datasource identifier (e.g. githb username)
+        b"CONFIRM", # consensus 
     ]
     def isValid(self, data) :
         body = parse_qs(data, keep_blank_values=1)
@@ -59,6 +59,7 @@ class NodeServer(BaseHTTPRequestHandler):
            listeners= query.fetchall() 
         if not listeners and len(listeners) < 200:
             cursor.execute("INSERT INTO listeners VALUES (0,'%s', 0)" % ip)
+            dbConnection.commit()
             return (201, "ADDED")
         if listeners:
             return (202, "ALREADY EXISTS")
@@ -75,11 +76,13 @@ class NodeServer(BaseHTTPRequestHandler):
             blockchain.onHeartbeat()
             return str(int(body[b"heartbeat"][0]))
         elif operation == b"BLOCK":
-            print(body[b"data"][0].decode("utf-8"))
             blockData = pickle.loads(base64.b64decode(bytes.fromhex(body[b"data"][0].decode("utf-8"))))
-            print("Received block, lets process", blockData["hash"])
             blockchain.onBlockReceived(blockData)
             return "block/"+blockData["hash"]
+        elif operation == b"CONFIRM":
+            confirmation = pickle.loads(base64.b64decode(bytes.fromhex(body[b"data"][0].decode("utf-8"))))
+            blockchain.onValidationReceived(confirmation)
+            return "confirm/"+confirmation["signature"]
             # process block
         elif operation in self.ALLOWED_OPERATIONS:
             return mempool.add(data)
@@ -103,8 +106,11 @@ class NodeServer(BaseHTTPRequestHandler):
                 print(e)
                 # if host not reachable more than 5 times kick listener 
                 cursor.execute("UPDATE listeners SET retry=retry+1 WHERE id=%d", listener[0])
+                self._dbConnection.commit()
                 if listener[2] > 4:
-                    cursor.execute("DELETE FROM listeners WHERE id=%d", listeners[0])    
+                    cursor.execute("DELETE FROM listeners WHERE id=%d", listeners[0])  
+                    self._dbConnection.commit()
+
 
 
 
@@ -112,12 +118,11 @@ class NodeServer(BaseHTTPRequestHandler):
 
     def processRequest(self, data):
         body = parse_qs(data, keep_blank_values=1)  
-        print(body)
+        print("Processing ...", body[b"operation"])
         hash = self.operate(data)
-        print(hash)
         if not body[b"operation"][0] == b"LISTEN":
             self.forward(hash, data)
-        print("completed processing")
+        print("====| Completed Processing |====")
 
 
     def do_GET(self):
@@ -126,7 +131,6 @@ class NodeServer(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(bytes(explorer.query(self.path), "utf-8"))
     def do_POST(self):
-        print("doing post")
         length = int(self.headers['content-length'])
         data = self.rfile.read(length)
         threading.Thread(target=self.processRequest, args=(data,)).start()

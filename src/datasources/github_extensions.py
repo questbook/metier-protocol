@@ -42,6 +42,7 @@ class GithubExtensions:
         storable = pickle.loads(base64.b64decode(bytes.fromhex(output)))
         for member in storable.members:
             self._cursor.execute("INSERT INTO github_extensions VALUES (0, '%s','%s')"("%s:%s"%(address,hash), member[0]))
+            self._dbConnection.commit()
         return 
     
     def getUsernameFromAuthToken(self, authToken):
@@ -56,8 +57,10 @@ class GithubExtensions:
         prev = self._cursor.execute("SELECT * FROM github_username_address_mappings WHERE github_username='%s'"%username)
         if prev :
             self._cursor.execute("UPDATE github_username_address_mappings SET address='%s' WHERE github_username='%s'"%(address, username))
+            self._dbConnection.commit()
         else:
             self._cursor.execute("INSERT INTO github_username_address_mappings VALUES ('%s','%s')"%(username, address))
+            self._dbConnection.commit()
         return
 
     def query(self, data):

@@ -17,7 +17,6 @@ class Heartbeat:
             heartbeat = int(t/10)*10
             print("New block time")
             try:
-                print("sending heart beat")
                 requests.post("http://localhost:9000/", "operation=HEARTBEAT&heartbeat=%d"%heartbeat, timeout=2)    
             except Exception as e:
                 print(e)
