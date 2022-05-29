@@ -78,7 +78,16 @@ class Blockchain():
             signer = web3.eth.Account.recover_message(signable, signature=confirmation["signature"])
             confirmations += self.getNodeStake(signer)
             self._cursor.execute("UPDATE blockheaders SET confirmations=%d, signatures='%s' WHERE hash='%s'"%(confirmations, signatures, hash))
-            
+            if confirmations > threshold:
+                blockdata = self._cursor.execute("SELECT * FROM blockdata WHERE hash='%s'"%hash).fetchall()[0]
+                blockNumber, blockHash, rawBlock = blockdata
+                block = pickle.loads(base64.b64decode(bytes.fromhex(rawBlock)))
+                blockTransactions = pickle.loads(base64.b64decode(bytes.fromhex(block["blockTxnsData"])))
+                for txn in blockTransactions:
+                    hash, data, timestamp, fees, output = txn
+                    body = parse_qs(data, keep_blank_values=1)
+                    if body["operation"] == "STORE":
+                        self._dataSourceHandlers[body["source"]].store(txn)
 
     def verifyBlockTransactions(self, transactions):
         for txn in transactions:
@@ -86,7 +95,7 @@ class Blockchain():
             hash, data, timestamp, fees, output = txn
             body = parse_qs(data, keep_blank_values=1)
             if body["operation"][0] == "STORE":
-                if not self._dataSourceHandlers[body["source"][0]].store(data):
+                if not self._dataSourceHandlers[body["source"][0]].verify(txn):
                     print("!!! FOUND INVALID TRANSACTION", hash)
                     return False
         return True
