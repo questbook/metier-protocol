@@ -11,8 +11,10 @@ from mempool import Mempool
 from blockchain import Blockchain
 import pickle
 import psycopg2
+import json
+config = json.loads(open("./config.json", "r").read())
 
-dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
+dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["host"], port = config["port"])
 cursor = dbConnection.cursor()
 cursor.execute('''CREATE TABLE IF NOT EXISTS listeners (id SERIAL PRIMARY KEY, ip TEXT, retry INT)''')
 cursor.execute('''CREATE TABLE IF NOT EXISTS forwards (hash TEXT, receivedAt INT)''')

@@ -32,7 +32,7 @@ class Blockchain():
     _dataSourceHandlers = {}
 
     def __init__(self, mempool):
-        self._dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
+        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["host"], port = config["port"])
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockdata (blocknumber INT, blockhash TEXT, data TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockheaders (blocknumber INT, blockhash TEXT, confirmations INT, signatures TEXT, threshold INT, timestamp INT)")
