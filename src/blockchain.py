@@ -161,7 +161,7 @@ class Blockchain():
                 output = self._dataSourceHandlers[body["source"][0]].query(data)
             blockTxns.append((hash, data, timestamp, fees, output))
             
-        blockTxnsHash = self.createMerkleTree(blockTxns) # todo: replace with merkel root
+        blockTxnsHash = self.createMerkleTree(blockTxns)
         # todo onchain submissions
         onchainTxnsHash = "n/a"
         # todo : utxos

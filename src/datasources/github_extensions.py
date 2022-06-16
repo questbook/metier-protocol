@@ -4,25 +4,30 @@ from urllib.parse import parse_qs
 import psycopg2
 from web3 import Web3
 
+from utils import getAddressFromSignature
+
+config = json.loads(open("./config.json", "r").read())
+
 class GithubExtensions:
     _dbConnection = None
     _cursor = None
 
     def __init__(self):
-        self._dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
+        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["host"], port = config["port"])
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_extensions (id SERIAL PRIMARY KEY, credential TEXT, github_username TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_username_address_mappings (github_username TEXT, address TEXT)")
         self._dbConnection.commit()
+
     def fetch(self, data):
         # todo : replace with real fetch
         body = parse_qs(data, keep_blank_values=1)
 
         response = {
-            "credential": "dummy",
-            "repo": "madhavanmalolan/ecm.js",
-            "ext": ".js",
-            "members": [("user1", 0), ("user2", 0)]
+            "credential": body["credential"][0],
+            "repo": body["reponame"][0],
+            "ext": body["ext"][0],
+            "members": body["params"][0]
         }
         pickled = pickle.dumps(response)
         return base64.b64encode(pickled).hex()
@@ -41,7 +46,7 @@ class GithubExtensions:
         hash, data, timestamp, fees, output = txn
         body = parse_qs(data, keep_blank_values=1)
         signature = body["signature"][0] 
-        address = str(body["address"][0]) # todo extract address from signature
+        address = getAddressFromSignature(hash, signature)
         storable = pickle.loads(base64.b64decode(bytes.fromhex(output)))
         for member in storable.members:
             self._cursor.execute("INSERT INTO github_extensions VALUES (0, '%s','%s')"%("%s:%s"%(address,hash), member[0]))
@@ -55,7 +60,7 @@ class GithubExtensions:
     def link(self, data):
         # todo : extract from access token
         body = parse_qs(data, keep_blank_values=1)
-        address = body["address"] # todo : extract from signature
+        address = getAddressFromSignature(hash, signature) # need to understand the data being passed and get the address from the signature
         username = self.getUsernameFromAuthToken(body["auth_token"])
         self._cursor.execute("SELECT * FROM github_username_address_mappings WHERE github_username='%s'"%username)
         if self._cursor.rowcount == 0 :
