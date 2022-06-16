@@ -11,6 +11,7 @@ import threading
 from urllib.parse import parse_qs
 import pickle
 import requests
+from pymerkle import MerkleTree
 
 import web3
 import datasources.github_extensions as github_extensions
@@ -139,6 +140,12 @@ class Blockchain():
     def execute(self, data):
         pass
 
+    def createMerkleTree(self, blockTxns):
+        merkleTree = MerkleTree()
+        for leaf in blockTxns:
+            merkleTree.encrypt(leaf)
+        root = merkleTree.get_root_hash()
+        return root
 
     def proposeBlock(self):
         txns = self._mempool.get(100)
@@ -153,7 +160,8 @@ class Blockchain():
             if body["operation"][0] == "QUERY":
                 output = self._dataSourceHandlers[body["source"][0]].query(data)
             blockTxns.append((hash, data, timestamp, fees, output))
-        blockTxnsHash = web3.Web3.sha3(pickle.dumps(blockTxns)).hex() # todo: replace with merkel root
+            
+        blockTxnsHash = self.createMerkleTree(blockTxns) # todo: replace with merkel root
         # todo onchain submissions
         onchainTxnsHash = "n/a"
         # todo : utxos

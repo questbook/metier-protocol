@@ -1,3 +1,6 @@
+import web3
+
 def getAddressFromSignature(data) :
     # todo: web3.ecrecover
-    return "0xaddress"
+    address = web3.eth.accounts.recover(data)
+    return "address"
