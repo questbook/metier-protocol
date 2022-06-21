@@ -14,13 +14,14 @@ import psycopg2
 import json
 config = json.loads(open("./config.json", "r").read())
 
-dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["host"], port = config["port"])
+dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["db_host"], port = config["db_port"])
 cursor = dbConnection.cursor()
 cursor.execute('''CREATE TABLE IF NOT EXISTS listeners (id SERIAL PRIMARY KEY, ip TEXT, retry INT)''')
 cursor.execute('''CREATE TABLE IF NOT EXISTS forwards (hash TEXT, receivedAt INT)''')
 dbConnection.commit()
-hostName = "localhost"
-hostPort = 9000
+hostName = config["hostName"]
+hostPort = config["hostPort"]
+peers = config["peerNodes"]
 
 
 MAX_FORWARD_RETRY = 5
@@ -30,7 +31,12 @@ mempool = Mempool()
 blockchain = Blockchain(mempool)
 explorer = Explorer(blockchain, mempool)
 
-
+def peerNode():
+    try:
+     response = requests.post(("http://"+peers), "operation=LISTEN&ip=%s"%peers, timeout=2)
+    except Exception as e:
+        print(e)
+        pass
 class NodeServer(BaseHTTPRequestHandler):
     ALLOWED_OPERATIONS = [
         b"BLOCK", # Block publication
@@ -49,6 +55,8 @@ class NodeServer(BaseHTTPRequestHandler):
         operation = body[b"operation"]
         # todo: check if data format is correct 
         # allowed operations : BLOCK, STORE, QUERY, CHALLENGE, RESPOND, LISTEN
+        isinstance(operation, bytes)
+        operation in self.ALLOWED_OPERATIONS
         return True
     
     def generateRequestHash(self, body):
@@ -112,15 +120,10 @@ class NodeServer(BaseHTTPRequestHandler):
                 print(e)
                 # if host not reachable more than 5 times kick listener 
                 cursor.execute("UPDATE listeners SET retry=retry+1 WHERE id=%d", listener[0])
-                self._dbConnection.commit()
+                dbConnection.commit()
                 if listener[2] > 4:
                     cursor.execute("DELETE FROM listeners WHERE id=%d", listeners[0])  
-                    self._dbConnection.commit()
-
-
-
-
-
+                    dbConnection.commit()
 
     def processRequest(self, data):
         body = parse_qs(data, keep_blank_values=1)  
@@ -153,6 +156,7 @@ myServer = HTTPServer((hostName, hostPort), NodeServer)
 print(time.asctime(), "Server Starts - %s:%s" % (hostName, hostPort))
 
 try:
+    peerNode()
     myServer.serve_forever()
 except KeyboardInterrupt:
     pass

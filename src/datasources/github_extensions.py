@@ -2,6 +2,7 @@ import base64
 import pickle
 from urllib.parse import parse_qs
 import psycopg2
+import json
 from web3 import Web3
 
 from utils import getAddressFromSignature
@@ -13,7 +14,7 @@ class GithubExtensions:
     _cursor = None
 
     def __init__(self):
-        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["host"], port = config["port"])
+        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["db_host"], port = config["db_port"])
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_extensions (id SERIAL PRIMARY KEY, credential TEXT, github_username TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_username_address_mappings (github_username TEXT, address TEXT)")

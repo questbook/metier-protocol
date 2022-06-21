@@ -20,6 +20,8 @@ from web3.auto import w3
 from eth_account.messages import encode_defunct
 
 config = json.loads(open("./config.json", "r").read())
+hostName = config["hostName"]
+hostPort = str(config["hostPort"])
 
 BLOCK_TIME = 10 #seconds
 
@@ -33,7 +35,7 @@ class Blockchain():
     _dataSourceHandlers = {}
 
     def __init__(self, mempool):
-        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["host"], port = config["port"])
+        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["db_host"], port = config["db_port"])
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockdata (blocknumber INT, blockhash TEXT, data TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockheaders (blocknumber INT, blockhash TEXT, confirmations INT, signatures TEXT, threshold INT, timestamp INT)")
@@ -75,7 +77,7 @@ class Blockchain():
                 "accept": 1,
                 "signature": web3.Account.sign_message(eth_account.messages.encode_defunct(text="%s/1"%hash), config["privateKey"]).signature.hex()
             }
-            requests.post("http://localhost:9000", "operation=CONFIRM&data=%s"%base64.b64encode(pickle.dumps(confirmation)).hex())
+            requests.post(("http://"+hostName+":"+hostPort), "operation=CONFIRM&data=%s"%base64.b64encode(pickle.dumps(confirmation)).hex())
             pass
     
     def onValidationReceived(self, confirmation):
@@ -157,6 +159,7 @@ class Blockchain():
             output=''
             if body["operation"][0] == "STORE":
                 output = self._dataSourceHandlers[body["source"][0]].fetch(data)
+                print("Fetched", output)
             if body["operation"][0] == "QUERY":
                 output = self._dataSourceHandlers[body["source"][0]].query(data)
             blockTxns.append((hash, data, timestamp, fees, output))
@@ -182,7 +185,7 @@ class Blockchain():
             "number": blocknumber,
             "signature": w3.eth.account.sign_message(encode_defunct(text=blockHash), private_key=config["privateKey"]).signature.hex()
         }
-        requests.post("http://localhost:9000/", "operation=BLOCK&data=%s"%base64.b64encode(pickle.dumps(block)).hex())
+        requests.post(("http://"+hostName+":"+hostPort), "operation=BLOCK&data=%s"%base64.b64encode(pickle.dumps(block)).hex())
         return None
     
     def getCurrentThreshold(self):
