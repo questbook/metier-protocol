@@ -30,13 +30,6 @@ MAX_FORWARD_RETRY = 5
 mempool = Mempool()
 blockchain = Blockchain(mempool)
 explorer = Explorer(blockchain, mempool)
-
-def peerNode():
-    try:
-     response = requests.post(("http://"+peers), "operation=LISTEN&ip=%s"%peers, timeout=2)
-    except Exception as e:
-        print(e)
-        pass
 class NodeServer(BaseHTTPRequestHandler):
     ALLOWED_OPERATIONS = [
         b"BLOCK", # Block publication
@@ -62,12 +55,21 @@ class NodeServer(BaseHTTPRequestHandler):
     def generateRequestHash(self, body):
         return "todo"
 
+    def peerNode(self):
+        try:
+            ip= hostName+':'+str(hostPort)
+            requests.post((peers), "operation=LISTEN&ip=%s"%ip, timeout=3)
+            return None
+        except Exception as e:
+            print(e)
+            pass
+
     def handleListen(self, body) :
-        ip = body[b"ip"][0].decode("utf-8")
-        query = cursor.execute("SELECT * FROM listeners WHERE ip = '%s'"% ip)
+        ip = body[b"ip"] #[0].decode("utf-8")
+        cursor.execute("SELECT * FROM listeners WHERE ip = '%s'"% ip)
         listeners = []
         if cursor.rowcount > 0:
-           listeners= query.fetchall() 
+           listeners= cursor.fetchall() 
         if not listeners and len(listeners) < 200:
             cursor.execute("INSERT INTO listeners VALUES (0,'%s', 0)" % ip)
             dbConnection.commit()
@@ -81,7 +83,8 @@ class NodeServer(BaseHTTPRequestHandler):
         body = parse_qs(data, keep_blank_values=1)      
         operation = body[b"operation"][0]
         if operation == b"LISTEN":
-            return self.handleListen(body)
+            data = {b"ip": peers}
+            return self.handleListen(data)
             # add to broadcast list
         if operation == b"HEARTBEAT":
             blockchain.onHeartbeat()
@@ -105,6 +108,8 @@ class NodeServer(BaseHTTPRequestHandler):
         if not self.isValid(data) or body[b"operation"] == "LISTEN":
             return
         cursor.execute("SELECT * FROM listeners")
+        dbConnection.commit()
+
         listeners = []
         if cursor.rowcount > 0:
             listeners = cursor.fetchall()
@@ -115,14 +120,14 @@ class NodeServer(BaseHTTPRequestHandler):
         for listener in listeners:
             try:
                 print("Forwarding to ", listener)
-                requests.post("http://"+listener[1]+":"+str(hostPort), data=body, timeout=3)
+                requests.post("http://"+listener[1], "operation=LISTEN&data=%s"%body, timeout=10)
             except Exception as e:
                 print(e)
                 # if host not reachable more than 5 times kick listener 
-                cursor.execute("UPDATE listeners SET retry=retry+1 WHERE id=%d", listener[0])
+                cursor.execute("UPDATE listeners SET retry=retry+1 WHERE id=%s", listener[0])
                 dbConnection.commit()
                 if listener[2] > 4:
-                    cursor.execute("DELETE FROM listeners WHERE id=%d", listeners[0])  
+                    cursor.execute("DELETE FROM listeners WHERE id=%s", listeners[0])  
                     dbConnection.commit()
 
     def processRequest(self, data):
@@ -133,7 +138,6 @@ class NodeServer(BaseHTTPRequestHandler):
         if not body[b"operation"][0] == b"LISTEN":
             self.forward(hash, data)
         print("====| Completed Processing %s : %s |===="%(body[b"operation"], hash))
-
 
     def do_GET(self):
         self.send_response(200)
@@ -156,7 +160,6 @@ myServer = HTTPServer((hostName, hostPort), NodeServer)
 print(time.asctime(), "Server Starts - %s:%s" % (hostName, hostPort))
 
 try:
-    peerNode()
     myServer.serve_forever()
 except KeyboardInterrupt:
     pass
