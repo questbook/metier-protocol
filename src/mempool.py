@@ -23,21 +23,24 @@ class Mempool :
     
     def isValid(self, data):
         body = parse_qs(data, keep_blank_values=1)
-
+        
         # todo: verify validity
         signableText, signature = data.decode("utf-8").split("&signature=")
         signerClaimed = body[b"address"][0].decode("utf-8")
         signable = eth_account.messages.encode_defunct(text=signableText)
-        signerSigned = web3.eth.Account.recover_message(signable, signature=signature)
+        signerSigned = getAddressFromSignature(signable, signature)
         if not signerClaimed==signerSigned:
             print("Invalid signature")
             return False
-        if not self._utxos.balance(getAddressFromSignature(data), int(body[b"txFee"][0])):
+        if not self._utxos.balance(signerSigned, int(body[b"txFee"][0])):
             return False
 
         return True
+        
     def hash(self, data):
         body = parse_qs(data, keep_blank_values=1)
+        signableText, signature = data.decode("utf-8").split("&signature=")
+        signable = eth_account.messages.encode_defunct(text=signableText)
         if body[b"operation"][0] == b"STORE":
             # { operation: STORE, source: github_extensions, repos : [], extension : js, signature: "", sender : "", nonce : int, timestamp: int, txFee : int}
             return Web3.sha3(text="%s>%s>%s>%s>%d>%s"%(
@@ -46,7 +49,7 @@ class Mempool :
                 str(body[b"repos"]),
                 body[b"extension"][0].decode("utf-8"),
                 int(body[b"nonce"][0]),
-                getAddressFromSignature(data), #todo: replace with extracting user address from signature
+                getAddressFromSignature(signable, signature), #todo: replace with extracting user address from signature
             )).hex()
 
 

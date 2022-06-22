@@ -99,7 +99,7 @@ class Blockchain():
             signable = eth_account.messages.encode_defunct(text="%s/1"%hash)
             signer = web3.eth.Account.recover_message(signable, signature=confirmation["signature"])
             confirmations += self.getNodeStake(signer)
-            self._cursor.execute("UPDATE blockheaders SET confirmations=%d, signatures='%s' WHERE blockhash='%s'"%(confirmations, signatures, hash))
+            self._cursor.execute("UPDATE blockheaders SET confirmations=%s, signatures='%s' WHERE blockhash='%s'"%(confirmations, signatures, hash))
             self._dbConnection.commit()
             print("Confirmations", confirmations, threshold)
             if confirmations >= threshold:
@@ -112,6 +112,7 @@ class Blockchain():
                     hash, data, timestamp, fees, output = txn
                     body = parse_qs(data, keep_blank_values=1)
                     if body["operation"] == "STORE":
+                        print("Storing data", txn)
                         self._dataSourceHandlers[body["source"]].store(txn)
                     if body["operation"] == "LINKUSER":
                         self._dataSourceHandlers[body["source"]].link(txn)
@@ -145,7 +146,7 @@ class Blockchain():
     def createMerkleTree(self, blockTxns):
         merkleTree = MerkleTree()
         for leaf in blockTxns:
-            merkleTree.encrypt(leaf)
+            merkleTree.encrypt(leaf[0])
         root = merkleTree.get_root_hash()
         return root
 

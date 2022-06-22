@@ -23,12 +23,11 @@ class GithubExtensions:
     def fetch(self, data):
         # todo : replace with real fetch
         body = parse_qs(data, keep_blank_values=1)
-
         response = {
-            "credential": body["credential"][0],
-            "repo": body["reponame"][0],
-            "ext": body["ext"][0],
-            "members": body["params"][0]
+            "credential": body["source"][0],
+            "repo": body["repos"][0],
+            "ext": body["extension"][0],
+            "members": body["address"][0]
         }
         pickled = pickle.dumps(response)
         return base64.b64encode(pickled).hex()
