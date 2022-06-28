@@ -87,7 +87,7 @@ class NodeServer(BaseHTTPRequestHandler):
             return self.handleListen(data)
             # add to broadcast list
         if operation == b"HEARTBEAT":
-            blockchain.onHeartbeat()
+            blockchain.onHeartbeat(int(body[b"heartbeat"][0]))
             return str(int(body[b"heartbeat"][0]))
         elif operation == b"BLOCK":
             blockData = pickle.loads(base64.b64decode(bytes.fromhex(body[b"data"][0].decode("utf-8"))))

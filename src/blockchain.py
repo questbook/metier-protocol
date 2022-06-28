@@ -48,9 +48,9 @@ class Blockchain():
         self._dataSourceHandlers["github_extensions"] = github_extensions.GithubExtensions()
         return
 
-    def onHeartbeat(self):
+    def onHeartbeat(self, data):
         print("Heartbeat received at current block", self.getLatestBlock())
-        if self.isSelfBlock():
+        if self.isSelfBlock(data):
             self.proposeBlock()
         else:
             pass
@@ -131,13 +131,13 @@ class Blockchain():
                     
             
 
-    def isSelfBlock(self):
+    def isSelfBlock(self, data):
         # check last block  
         # check stake on mainnet
         # todo: logic on how to calculate is selfBlock 
         # todo : implement tendermint
-        r = int(random() * 1000)
-        return (r%2) == 0
+        nodeId = int(random() * 1000)
+        return (data%2) == nodeId%2
     
 
     def execute(self, data):

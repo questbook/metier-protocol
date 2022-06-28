@@ -1,5 +1,6 @@
 import requests
 import time
+from random import random
 import json
 config = json.loads(open("./config.json", "r").read())
 
@@ -19,8 +20,7 @@ class Heartbeat:
             print("Waiting for sync heartbeat ...", syncParity)
         print("Sync found")
         while True:
-            t = int(time.time())
-            heartbeat = int(t/10)*10
+            heartbeat = random() * 1000
             print("New block time")
             try:
                 requests.post(("http://"+hostName+":"+hostPort), "operation=HEARTBEAT&heartbeat=%d"%heartbeat, timeout=2)    
