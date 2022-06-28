@@ -1,4 +1,5 @@
 import base64
+from github import Github
 import pickle
 from urllib.parse import parse_qs
 import psycopg2
@@ -12,6 +13,7 @@ config = json.loads(open("./config.json", "r").read())
 class GithubExtensions:
     _dbConnection = None
     _cursor = None
+    _github = Github()
 
     def __init__(self):
         self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["db_host"], port = config["db_port"])
@@ -23,6 +25,8 @@ class GithubExtensions:
     def fetch(self, data):
         # todo : replace with real fetch
         body = parse_qs(data, keep_blank_values=1)
+        search = _github.search_repositories(body["repos"][0])._github.search_repositories(body["extension"][0])
+        print("searched github", search)
         response = {
             "credential": body["source"][0],
             "repo": body["repos"][0],
