@@ -1,19 +1,19 @@
 import base64
+from posixpath import split
 from github import Github
 import pickle
 from urllib.parse import parse_qs
 import psycopg2
 import json
 from web3 import Web3
-
 from utils import getAddressFromSignature
-
 config = json.loads(open("./config.json", "r").read())
+github = Github()
 
 class GithubExtensions:
     _dbConnection = None
     _cursor = None
-    _github = Github()
+    
 
     def __init__(self):
         self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["db_host"], port = config["db_port"])
@@ -25,13 +25,15 @@ class GithubExtensions:
     def fetch(self, data):
         # todo : replace with real fetch
         body = parse_qs(data, keep_blank_values=1)
-        search = _github.search_repositories(body["repos"][0])._github.search_repositories(body["extension"][0])
-        print("searched github", search)
+        contributors = []
+        for search in github.get_repo(body["repos"][0]).get_contributors():
+            contributors.append(search.login)
+        print("contributors", contributors)
         response = {
             "credential": body["source"][0],
             "repo": body["repos"][0],
             "ext": body["extension"][0],
-            "members": body["address"][0]
+            "members": contributors
         }
         pickled = pickle.dumps(response)
         return base64.b64encode(pickled).hex()
