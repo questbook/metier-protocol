@@ -28,7 +28,7 @@ class GithubExtensions:
         contributors = []
         for search in github.get_repo(body["repos"][0]).get_contributors():
             contributors.append(search.login)
-        print("contributors", contributors)
+        
         response = {
             "credential": body["source"][0],
             "repo": body["repos"][0],

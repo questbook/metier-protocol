@@ -22,15 +22,16 @@ from eth_account.messages import encode_defunct
 config = json.loads(open("./config.json", "r").read())
 hostName = config["hostName"]
 hostPort = str(config["hostPort"])
+peers = config["peerNodes"]
 
 BLOCK_TIME = 10 #seconds
-
-
 
 class Blockchain():
     _dbConnection = None
     _cursor = None
     _mempool = None
+
+    
 
     _dataSourceHandlers = {}
 
@@ -48,9 +49,25 @@ class Blockchain():
         self._dataSourceHandlers["github_extensions"] = github_extensions.GithubExtensions()
         return
 
+    def createHeartbeat():
+        heartbeat = int(random() * 1000)
+        f = open('stor.txt', 'w')
+        f.write(str(heartbeat))
+        f.close()
+        print("New block time")
+        try:
+            requests.post((peers), "operation=HEARTBEAT&heartbeat=%d"%heartbeat, timeout=2)    
+        except Exception as e:
+            print(e)
+            pass
+        finally:
+            print("heartbeat sent")
+
     def onHeartbeat(self, data):
         print("Heartbeat received at current block", self.getLatestBlock())
-        if self.isSelfBlock(data):
+        f = open('stor.txt', 'r')
+        nodeHeartbeat = f.read()
+        if self.isSelfBlock(data, int(nodeHeartbeat)):
             self.proposeBlock()
         else:
             pass
@@ -77,7 +94,7 @@ class Blockchain():
                 "accept": 1,
                 "signature": web3.Account.sign_message(eth_account.messages.encode_defunct(text="%s/1"%hash), config["privateKey"]).signature.hex()
             }
-            requests.post(("http://"+hostName+":"+hostPort), "operation=CONFIRM&data=%s"%base64.b64encode(pickle.dumps(confirmation)).hex())
+            requests.post((peers), "operation=CONFIRM&data=%s"%base64.b64encode(pickle.dumps(confirmation)).hex())
             pass
     
     def onValidationReceived(self, confirmation):
@@ -131,13 +148,12 @@ class Blockchain():
                     
             
 
-    def isSelfBlock(self, data):
+    def isSelfBlock(self, data, heartbeat):
         # check last block  
         # check stake on mainnet
         # todo: logic on how to calculate is selfBlock 
         # todo : implement tendermint
-        nodeId = int(random() * 1000)
-        return (data%2) == nodeId%2
+        return (data%2) == heartbeat%2
     
 
     def execute(self, data):
@@ -186,7 +202,7 @@ class Blockchain():
             "number": blocknumber,
             "signature": w3.eth.account.sign_message(encode_defunct(text=blockHash), private_key=config["privateKey"]).signature.hex()
         }
-        requests.post(("http://"+hostName+":"+hostPort), "operation=BLOCK&data=%s"%base64.b64encode(pickle.dumps(block)).hex())
+        requests.post((peers), "operation=BLOCK&data=%s"%base64.b64encode(pickle.dumps(block)).hex())
         return None
     
     def getCurrentThreshold(self):
