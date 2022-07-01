@@ -11,6 +11,7 @@ import threading
 from urllib.parse import parse_qs
 import pickle
 import requests
+from pymerkle import MerkleTree
 
 import web3
 import datasources.github_extensions as github_extensions
@@ -19,20 +20,23 @@ from web3.auto import w3
 from eth_account.messages import encode_defunct
 
 config = json.loads(open("./config.json", "r").read())
+hostName = config["hostName"]
+hostPort = str(config["hostPort"])
+peers = config["peerNodes"]
 
 BLOCK_TIME = 10 #seconds
-
-
 
 class Blockchain():
     _dbConnection = None
     _cursor = None
     _mempool = None
 
+    
+
     _dataSourceHandlers = {}
 
     def __init__(self, mempool):
-        self._dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
+        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["db_host"], port = config["db_port"])
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockdata (blocknumber INT, blockhash TEXT, data TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS blockheaders (blocknumber INT, blockhash TEXT, confirmations INT, signatures TEXT, threshold INT, timestamp INT)")
@@ -45,9 +49,25 @@ class Blockchain():
         self._dataSourceHandlers["github_extensions"] = github_extensions.GithubExtensions()
         return
 
-    def onHeartbeat(self):
+    def createHeartbeat():
+        heartbeat = int(random() * 1000)
+        f = open('stor.txt', 'w')
+        f.write(str(heartbeat))
+        f.close()
+        print("New block time")
+        try:
+            requests.post((peers), "operation=HEARTBEAT&heartbeat=%d"%heartbeat, timeout=2)    
+        except Exception as e:
+            print(e)
+            pass
+        finally:
+            print("heartbeat sent")
+
+    def onHeartbeat(self, data):
         print("Heartbeat received at current block", self.getLatestBlock())
-        if self.isSelfBlock():
+        f = open('stor.txt', 'r')
+        nodeHeartbeat = f.read()
+        if self.isSelfBlock(data, int(nodeHeartbeat)):
             self.proposeBlock()
         else:
             pass
@@ -74,7 +94,7 @@ class Blockchain():
                 "accept": 1,
                 "signature": web3.Account.sign_message(eth_account.messages.encode_defunct(text="%s/1"%hash), config["privateKey"]).signature.hex()
             }
-            requests.post("http://localhost:9000", "operation=CONFIRM&data=%s"%base64.b64encode(pickle.dumps(confirmation)).hex())
+            requests.post((peers), "operation=CONFIRM&data=%s"%base64.b64encode(pickle.dumps(confirmation)).hex())
             pass
     
     def onValidationReceived(self, confirmation):
@@ -96,7 +116,7 @@ class Blockchain():
             signable = eth_account.messages.encode_defunct(text="%s/1"%hash)
             signer = web3.eth.Account.recover_message(signable, signature=confirmation["signature"])
             confirmations += self.getNodeStake(signer)
-            self._cursor.execute("UPDATE blockheaders SET confirmations=%d, signatures='%s' WHERE blockhash='%s'"%(confirmations, signatures, hash))
+            self._cursor.execute("UPDATE blockheaders SET confirmations=%s, signatures='%s' WHERE blockhash='%s'"%(confirmations, signatures, hash))
             self._dbConnection.commit()
             print("Confirmations", confirmations, threshold)
             if confirmations >= threshold:
@@ -109,6 +129,7 @@ class Blockchain():
                     hash, data, timestamp, fees, output = txn
                     body = parse_qs(data, keep_blank_values=1)
                     if body["operation"] == "STORE":
+                        print("Storing data", txn)
                         self._dataSourceHandlers[body["source"]].store(txn)
                     if body["operation"] == "LINKUSER":
                         self._dataSourceHandlers[body["source"]].link(txn)
@@ -127,18 +148,23 @@ class Blockchain():
                     
             
 
-    def isSelfBlock(self):
+    def isSelfBlock(self, data, heartbeat):
         # check last block  
         # check stake on mainnet
         # todo: logic on how to calculate is selfBlock 
         # todo : implement tendermint
-        r = int(random() * 1000)
-        return (r%2) == 0
+        return (data%2) == heartbeat%2
     
 
     def execute(self, data):
         pass
 
+    def createMerkleTree(self, blockTxns):
+        merkleTree = MerkleTree()
+        for leaf in blockTxns:
+            merkleTree.encrypt(leaf[0])
+        root = merkleTree.get_root_hash()
+        return root
 
     def proposeBlock(self):
         txns = self._mempool.get(100)
@@ -150,10 +176,12 @@ class Blockchain():
             output=''
             if body["operation"][0] == "STORE":
                 output = self._dataSourceHandlers[body["source"][0]].fetch(data)
+                print("Fetched", output)
             if body["operation"][0] == "QUERY":
                 output = self._dataSourceHandlers[body["source"][0]].query(data)
             blockTxns.append((hash, data, timestamp, fees, output))
-        blockTxnsHash = web3.Web3.sha3(pickle.dumps(blockTxns)).hex() # todo: replace with merkel root
+            
+        blockTxnsHash = self.createMerkleTree(blockTxns)
         # todo onchain submissions
         onchainTxnsHash = "n/a"
         # todo : utxos
@@ -174,7 +202,7 @@ class Blockchain():
             "number": blocknumber,
             "signature": w3.eth.account.sign_message(encode_defunct(text=blockHash), private_key=config["privateKey"]).signature.hex()
         }
-        requests.post("http://localhost:9000/", "operation=BLOCK&data=%s"%base64.b64encode(pickle.dumps(block)).hex())
+        requests.post((peers), "operation=BLOCK&data=%s"%base64.b64encode(pickle.dumps(block)).hex())
         return None
     
     def getCurrentThreshold(self):

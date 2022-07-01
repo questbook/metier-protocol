@@ -1,28 +1,39 @@
 import base64
+from posixpath import split
+from github import Github
 import pickle
 from urllib.parse import parse_qs
 import psycopg2
+import json
 from web3 import Web3
+from utils import getAddressFromSignature
+config = json.loads(open("./config.json", "r").read())
+github = Github(config["github_access_key"])
 
 class GithubExtensions:
     _dbConnection = None
     _cursor = None
+    
 
     def __init__(self):
-        self._dbConnection = psycopg2.connect(database="metieruser", user = "metieruser", password = "metier123", host = "127.0.0.1", port = "5432")
+        self._dbConnection = psycopg2.connect(database=config["db"], user = config["db_user"], password = config["db_password"], host = config["db_host"], port = config["db_port"])
         self._cursor = self._dbConnection.cursor()
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_extensions (id SERIAL PRIMARY KEY, credential TEXT, github_username TEXT)")
         self._cursor.execute("CREATE TABLE IF NOT EXISTS github_username_address_mappings (github_username TEXT, address TEXT)")
         self._dbConnection.commit()
-    def fetch(self, data):
-        # todo : replace with real fetch
-        body = parse_qs(data, keep_blank_values=1)
 
+    def fetch(self, data):
+        body = parse_qs(data, keep_blank_values=1)
+        contributors = []
+        for search in github.get_repo(body["repos"][0]).get_commits():
+            if body["extension"][0] in search.files[0].filename:
+                contributors.append(search.committer.login)
+        
         response = {
-            "credential": "dummy",
-            "repo": "madhavanmalolan/ecm.js",
-            "ext": ".js",
-            "members": [("user1", 0), ("user2", 0)]
+            "credential": body["source"][0],
+            "repo": body["repos"][0],
+            "ext": body["extension"][0],
+            "members": contributors
         }
         pickled = pickle.dumps(response)
         return base64.b64encode(pickled).hex()
@@ -41,7 +52,7 @@ class GithubExtensions:
         hash, data, timestamp, fees, output = txn
         body = parse_qs(data, keep_blank_values=1)
         signature = body["signature"][0] 
-        address = str(body["address"][0]) # todo extract address from signature
+        address = getAddressFromSignature(hash, signature)
         storable = pickle.loads(base64.b64decode(bytes.fromhex(output)))
         for member in storable.members:
             self._cursor.execute("INSERT INTO github_extensions VALUES (0, '%s','%s')"%("%s:%s"%(address,hash), member[0]))
@@ -49,13 +60,15 @@ class GithubExtensions:
         return 
     
     def getUsernameFromAuthToken(self, authToken):
-        #todo request githubapi
-        return authToken 
+        #todo request githubapi . DONE
+        user = Github(authToken)
+        return user.login 
 
     def link(self, data):
         # todo : extract from access token
         body = parse_qs(data, keep_blank_values=1)
-        address = body["address"] # todo : extract from signature
+        signature = body["signature"][0] 
+        address = getAddressFromSignature(hash, signature) 
         username = self.getUsernameFromAuthToken(body["auth_token"])
         self._cursor.execute("SELECT * FROM github_username_address_mappings WHERE github_username='%s'"%username)
         if self._cursor.rowcount == 0 :

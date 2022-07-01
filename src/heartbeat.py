@@ -1,5 +1,13 @@
 import requests
 import time
+from random import random
+from blockchain import Blockchain
+import json
+config = json.loads(open("./config.json", "r").read())
+
+hostName = config["hostName"]
+hostPort = str(config["hostPort"])
+peers = config["peerNodes"]
 
 BLOCK_TIME = 10
 class Heartbeat:
@@ -13,17 +21,7 @@ class Heartbeat:
             print("Waiting for sync heartbeat ...", syncParity)
         print("Sync found")
         while True:
-            t = int(time.time())
-            heartbeat = int(t/10)*10
-            print("New block time")
-            try:
-                requests.post("http://localhost:9000/", "operation=HEARTBEAT&heartbeat=%d"%heartbeat, timeout=2)    
-            except Exception as e:
-                print(e)
-                pass
-            finally:
-                print("heartbeat sent")
-
+            Blockchain.createHeartbeat()
             time.sleep(BLOCK_TIME)
 
 Heartbeat().initHeartbeat()
