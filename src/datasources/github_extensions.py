@@ -8,7 +8,7 @@ import json
 from web3 import Web3
 from utils import getAddressFromSignature
 config = json.loads(open("./config.json", "r").read())
-github = Github()
+github = Github(config["github_access_key"])
 
 class GithubExtensions:
     _dbConnection = None
@@ -23,11 +23,11 @@ class GithubExtensions:
         self._dbConnection.commit()
 
     def fetch(self, data):
-        # todo : replace with real fetch
         body = parse_qs(data, keep_blank_values=1)
         contributors = []
-        for search in github.get_repo(body["repos"][0]).get_contributors():
-            contributors.append(search.login)
+        for search in github.get_repo(body["repos"][0]).get_commits():
+            if body["extension"][0] in search.files[0].filename:
+                contributors.append(search.committer.login)
         
         response = {
             "credential": body["source"][0],
@@ -60,13 +60,15 @@ class GithubExtensions:
         return 
     
     def getUsernameFromAuthToken(self, authToken):
-        #todo request githubapi
-        return authToken 
+        #todo request githubapi . DONE
+        user = Github(authToken)
+        return user.login 
 
     def link(self, data):
         # todo : extract from access token
         body = parse_qs(data, keep_blank_values=1)
-        address = getAddressFromSignature(hash, signature) # need to understand the data being passed and get the address from the signature
+        signature = body["signature"][0] 
+        address = getAddressFromSignature(hash, signature) 
         username = self.getUsernameFromAuthToken(body["auth_token"])
         self._cursor.execute("SELECT * FROM github_username_address_mappings WHERE github_username='%s'"%username)
         if self._cursor.rowcount == 0 :
